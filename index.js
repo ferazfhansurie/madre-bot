@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
 const OpenAI = require('openai');
 const config = require('./config');
-
+require('dotenv').config();
 const openai = new OpenAI({
     apiKey: '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',
     endpoint: 'https://api.openai.com'
@@ -11,10 +11,20 @@ const openai = new OpenAI({
 
 const app = express();
 app.use(bodyParser.json());
+app.get('/', function (req, res) {
+    res.send('Bot sedang berjalan');
+});
 
+app.post('/hook/messages', handleNewMessages);
+
+const port = process.env.PORT;
+app.listen(port, function () {
+    console.log(`Mendengar pada port ${port}...`);
+});
 // Tentukan langkah-langkah aliran kerja
 const steps = {
     START: 'mula',
+    WEBSTART:'webstart',
     STEP_ONE: 'langkah_satu',
     STEP_TWO: 'langkah_dua',
     STEP_THREE: 'langkah_tiga',
@@ -40,18 +50,35 @@ async function handleNewMessages(req, res) {
             };
 
             // Dapatkan langkah semasa atau tetapkan ke MULA jika tidak ditakrifkan
-            let currentStep = userState.get(sender.to) || steps.START;
+            let currentStep = userState.get(sender.to) || steps.WEBSTART;
             
             switch (currentStep) {
-               
+                case steps.WEBSTART:
+                     // 5 sec delay
+                     const webhookResponse2 = await callWebhook('https://hook.us1.make.com/e6rlgyftqf3kebexbomwj3pqaukwytg9',message.text.body,sender.to,sender.name);
+                     console.log(webhookResponse2);
+                     if (webhookResponse2) { 
+                         // Send the response from the webhook to the user
+                         await sendWhapiRequest('messages/text', { to: sender.to, body: webhookResponse2 });
+                     } else {
+                         console.error('No valid response from webhook.');
+                     }
+     
+                     console.log('Response sent.');
+                    if(message.text.body.includes("checkout")){
+                        userState.set(sender.to, steps.START); // Update user state
+                     }
+                       
+         
+                break;
 
                     case steps.START:
                         // Menangani langkah satu
-                        await sendWhapiRequest('messages/text', { to: sender.to, body: 'Saya pembantu yang membantu dari MADRE untuk menjadikan pengalaman membeli-belah anda sebaik mungkin.' });
-                        await sendWhapiRequest('messages/text', { to: sender.to, body: 'Nampaknya anda meninggalkan beberapa item dalam troli anda baru-baru ini:'});
+                        await sendWhapiRequest('messages/text', { to: sender.to, body: 'Saya pembantu AI dari MADRE untuk menjadikan pengalaman membeli-belah anda lebih baik.' });
+                        await sendWhapiRequest('messages/text', { to: sender.to, body: 'Nampaknya anda membiarkan beberapa item didalam troli anda baru-baru ini:'});
                     const pollParams = {
                         to: sender.to,
-                        title: 'Adakah anda ingin meneruskan membeli-belah untuk item-item ini?',
+                        title: 'Adakah anda ingin meneruskan pembelian untuk item-item ini?',
                         options: ['Ya', 'Tidak'],
                         count: 1,
                         view_once: true
@@ -70,9 +97,9 @@ async function handleNewMessages(req, res) {
                         
                         if(message.action.votes[0]=== selectedOption[0])
                         {
-                            await sendWhapiRequest('messages/text', { to: sender.to, body: 'Klik di sini untuk menyelesaikan pembelian anda:\n' + 
+                            await sendWhapiRequest('messages/text', { to: sender.to, body: 'Klik di sini untuk selesaikan pembelian anda:\n' + 
                             'https://madre.my/collections/bestsellers'});
-                            await sendWhapiRequest('messages/text', { to: sender.to, body: 'Adakah ada yang lain yang saya boleh bantu?' });
+                            await sendWhapiRequest('messages/text', { to: sender.to, body: 'Ada perkara lain yang boleh saya bantu?' });
                             userState.set(sender.to, steps.FINISH); // Kemaskini keadaan pengguna
                             break;
                         }
@@ -80,12 +107,12 @@ async function handleNewMessages(req, res) {
                         {
                             setTimeout(async () =>
                             {
-                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Item anda ada DIJUAL!\n' +
+                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Jualan murah untuk item anda!!\n' +
                                 'Adakah anda ingin mendapatkan diskaun pada pesanan anda?'});
-                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Selesaikan pembelian anda dalam masa satu jam akan mendapatkan 10% diskaun!' });
+                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Selesaikan pembelian anda dalam masa satu jam dan dapatkan 10% diskaun!' });
                                 const pollParams = {
                                     to: sender.to,
-                                    title: 'Adakah anda ingin meneruskan membeli-belah untuk item-item ini?',
+                                    title: 'Adakah anda ingin meneruskan pembelian untuk item-item ini?',
                                     options: ['Ya', 'Tidak'],
                                     count: 1,
                                     view_once: true
@@ -109,7 +136,7 @@ async function handleNewMessages(req, res) {
                         {
                             await sendWhapiRequest('messages/text', { to: sender.to, body: 'Gembira mendengarnya!' });
                             await sendWhapiRequest('messages/text', { to: sender.to, body: 'Jangan biarkan kasut itu terlepas! Selesaikan pembelian anda sekarang dan nikmati diskaun istimewa 10%. Gunakan kod CART10 semasa pembayaran.'});
-                            await sendWhapiRequest('messages/text', { to: sender.to, body: 'Klik di sini untuk menyelesaikan pembelian anda:\n' + 
+                            await sendWhapiRequest('messages/text', { to: sender.to, body: 'Klik di sini untuk selesaikan pembelian anda:\n' + 
                             'https://madre.my/collections/bestsellers'});
                             userState.set(sender.to, steps.FINISH); // Kemaskini keadaan pengguna
                         break;
@@ -118,8 +145,8 @@ async function handleNewMessages(req, res) {
                         {
                             setTimeout(async () =>
                             {
-                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Hi, saya perasan anda tidak menyelesaikan pembelian anda\n' +
-                                'Bolehkah anda beritahu saya jika ada sebab tertentu?\n' +
+                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Hi, saya perasan anda tidak selesaikan pembelian anda\n' +
+                                'Boleh tau sebab apa?\n' +
                                 'Anda boleh memilih dari pilihan di bawah'});
                                 const pollParams = {
                                   to: sender.to,
@@ -138,9 +165,9 @@ async function handleNewMessages(req, res) {
                         case steps.STEP_FOUR:
                             setTimeout(async () =>
                             {
-                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Peluang terakhir! Kasut anda menunggu dengan sabar dalam troli anda, tetapi mereka tidak akan berada di sana selamanya.\n' +
-                                'Selesaikan pembelian anda sekarang dan masuk ke dalam gaya!'});
-                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Klik di sini untuk menyelesaikan pembelian anda:\n' + 
+                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Peluang terakhir! Kasut anda sedang menunggu didalam troli, tetapi kasut tersebut tidak akan berada di situ selamanya.\n' +
+                                'Selesaikan pembelian anda sekarang dan terus bergaya!'});
+                                await sendWhapiRequest('messages/text', { to: sender.to, body: 'Klik di sini untuk selesaikan pembelian anda:\n' + 
                                 'https://madre.my/collections/bestsellers'});
                                 userState.set(sender.to, steps.FINISH); // Kemaskini keadaan pengguna
                             },5*1000);
@@ -148,7 +175,7 @@ async function handleNewMessages(req, res) {
                         break;
                         case steps.FINISH:
                                 
-                const webhookResponse = await callWebhook('https://hook.us1.make.com/knfsaagv5tnfrx2j752l9c6cajk7pxb6',message.text.body,sender.to,sender.name);
+                const webhookResponse = await callWebhook('https://hook.us1.make.com/e6rlgyftqf3kebexbomwj3pqaukwytg9',message.text.body,sender.to,sender.name);
                 
                 if (webhookResponse) {
                     // Send the response from the webhook to the user
@@ -171,9 +198,12 @@ async function handleNewMessages(req, res) {
     }
 }
 async function callWebhook(webhook,senderText,senderNumber,senderName) {
-    console.log('Memanggil webhook...');
+   
     const webhookUrl = webhook;
-    const body = JSON.stringify({ senderText,senderNumber,senderName }); // Termasuk teks pengirim dalam badan permintaan
+    console.log('Memanggil webhook...'+webhookUrl);
+    const body = JSON.stringify({ senderText,senderNumber,senderName }); 
+    // Termasuk teks pengirim dalam badan permintaan
+    
     const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
@@ -181,6 +211,7 @@ async function callWebhook(webhook,senderText,senderNumber,senderName) {
         },
         body: body
     });
+    console.log(response.body);
     const responseData = await response.text(); // Dapatkan respons sebagai teks
     console.log('Respon webhook:', responseData); // Log respon mentah
  return responseData;
@@ -203,13 +234,4 @@ async function sendWhapiRequest(endpoint, params = {}, method = 'POST') {
     return jsonResponse;
 }
 
-app.get('/', function (req, res) {
-    res.send('Bot sedang berjalan');
-});
 
-app.post('/hook/messages', handleNewMessages);
-
-const port = config.port || (config.botUrl.indexOf('https:') === 0 ? 443 : 80);
-app.listen(port, function () {
-    console.log(`Mendengar pada port ${port}...`);
-});
